@@ -22,7 +22,12 @@ classdef ballbeamController < handle
         integrator
         ki
         error_d1
-        
+        F_d1
+        A
+        B
+        C
+        L
+        x_hat
     end
     %----------------------------
     methods
@@ -44,6 +49,12 @@ classdef ballbeamController < handle
             self.integrator = 0.0;
             self.ki = P.ki;
             self.error_d1 = 0.0;
+            self.F_d1 = 0.0;
+            self.A = P.A;
+            self.B = P.B;
+            self.C = P.C;
+            self.L = P.L;
+            self.x_hat = [0.0; 0.0; 0.0; 0.0];
             
             % Instantiates the PD control objects
             self.zCtrl = PIDControl(P.kp_z, P.kd_z, P.ki_z, P.theta_max, P.beta, P.Ts);
@@ -54,56 +65,58 @@ classdef ballbeamController < handle
             % y_r is the referenced input
             % y is the current state
             z_r = y_r;
-            z = y(1);
-            theta = y(2);
             
-            Fe = (self.m1*self.g*z + .5*self.m2*self.g*self.length)/(self.length);
-            
-            self.differentiateZ(z);
-            self.differentiateTheta(theta);
+            % update the observer and extract z_hat
+            self.updateObserver(y);
+            z_hat = self.x_hat(1);
+            Fe = (self.m1*self.g*z_hat + .5*self.m2*self.g*self.length)/(self.length);
             
             % integrate error
-            error = z_r - z;
+            error = z_r - z_hat;
             self.integrateError(error);
             
             % construct state
-            x = [z; theta; self.zdot; self.thetadot];
-            F_tilda = -self.K*x - self.ki*self.integrator;
-            % Implement your controller here...
+            F_tilda = -self.K*self.x_hat - self.ki*self.integrator;
             
-            % You may choose to implement the PD control directly or call the 
-            % PDControl class.  The PDControl class will return a force output 
-            % for the given reference input and current state.
-            % i.e. for the z-controller (already set up in the constructor)
-            % call: z_force = self.zCtrl.PD(z_r, z, false);
-            % For the theta controller call: 
-            %       theta_force = self.thetaCtrl.PD(theta_r, theta, false);
-            % You will need to determine what the output is for these
-            % controllers in relation to the block diagrams derived for the
-            % inner and outer loop control.
             F_unsat = Fe + F_tilda;
-            F = self.saturateF(F_unsat);
-            self.integratorAntiWindup(F, F_unsat);
+            F_sat = self.saturateF(F_unsat);
+            self.updateForce(F_sat);
+            F = F_sat;
+%             self.integratorAntiWindup(F, F_unsat);
             
         end
-        %-------------------------
-        function self = differentiateZ(self, z)
-            self.zdot = ...
-                self.beta*self.zdot...
-                + (1-self.beta)*((z-self.z0) / self.Ts);
-            self.z0 = z;
+        %----------------------------
+        function self = updateObserver(self, y_m)
+            N = 10;
+            for i=1:N
+                self.x_hat = self.x_hat + self.Ts/N*(...
+                    self.A*self.x_hat...
+                    + self.B*self.F_d1...
+                    + self.L*(y_m-self.C*self.x_hat));
+            end
+        end
+        %----------------------------
+        function self = updateForce(self, F)
+            self.F_d1 = F;
         end
         %-------------------------
-        function self = integratorAntiWindup(self, u_sat, u_unsat)
-            self.integrator = self.integrator + self.Ts/self.ki*(u_sat-u_unsat);
-        end
+%         function self = differentiateZ(self, z)
+%             self.zdot = ...
+%                 self.beta*self.zdot...
+%                 + (1-self.beta)*((z-self.z0) / self.Ts);
+%             self.z0 = z;
+%         end
         %-------------------------
-        function self = differentiateTheta(self, theta)
-            self.thetadot = ...
-                self.beta*self.thetadot...
-                + (1-self.beta)*((theta-self.theta0) / self.Ts);
-            self.theta0 = theta;
-        end
+%         function self = integratorAntiWindup(self, u_sat, u_unsat)
+%             self.integrator = self.integrator + self.Ts/self.ki*(u_sat-u_unsat);
+%         end
+        %-------------------------
+%         function self = differentiateTheta(self, theta)
+%             self.thetadot = ...
+%                 self.beta*self.thetadot...
+%                 + (1-self.beta)*((theta-self.theta0) / self.Ts);
+%             self.theta0 = theta;
+%         end
         %-------------------------
         function self = integrateError(self, error)
             self.integrator = self.integrator + (self.Ts/2.0)*(error+self.error_d1);

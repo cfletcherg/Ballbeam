@@ -1,5 +1,5 @@
 clear all
-ballbeamParamHW9;  % load parameters
+ballbeamParamHW10;  % load parameters
 
 % instantiate ballbeam, controller, and reference input classes 
 % Instantiate Dynamics class
@@ -13,6 +13,7 @@ reference = signalGenerator(amplitude, frequency);
 % instantiate the data plots and animation
 dataPlot = plotData(P);
 animation = ballbeamAnimation(P);
+observerPlot = plotObserverData(P);
 
 % main simulation loop
 t = P.t_start;  % time starts at t_start
@@ -30,6 +31,7 @@ while t < P.t_end
     animation.drawBallbeam(ballbeam.states);
     ballbeam.states;
     dataPlot.updatePlots(t, ref_input, ballbeam.states, u);
+    observerPlot.updatePlots(t, ballbeam.states, ctrl.x_hat);
 end
 
 
